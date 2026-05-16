@@ -1,7 +1,7 @@
 //@version=5
-indicator("VWAP Pro — Institutional Bias Engine Clean", overlay=true,
-     max_lines_count=500,
-     max_labels_count=500)
+indicator("VWAP Pro — Institutional + Webhook Bot", overlay=true,
+     max_lines_count=100,
+     max_labels_count=50)
 
 // ═══════════════════════════════════════════
 // MODO
@@ -113,10 +113,14 @@ grp7 = "Alertas"
 use_alerts = input.bool(true, "Activar Alertas", group=grp7)
 alert_symbol_name = input.string("YMM / US30 / DOW", "Nombre Mercado", group=grp7)
 
-grp_webhook = "Webhook / IG Bot (JSON)"
+grp_webhook = "Webhook / Bot FastAPI (JSON)"
+asset_preset = input.string("Crypto 24/7", "Preset mercado", options=["Crypto 24/7", "Indices US", "Personalizado"], group=grp_webhook)
 use_webhook_json = input.bool(true, "Enviar alertas como JSON", group=grp_webhook)
-webhook_epic = input.string("IX.D.DOW.DAILY.IP", "Epic IG (para API / bot)", tooltip="Código EPIC exacto en IG Markets para este mercado.", group=grp_webhook)
-webhook_secret = input.string("", "WEBHOOK_SECRET (igual que Railway)", tooltip="Opcional si Railway tiene WEBHOOK_SECRET configurado.", group=grp_webhook)
+use_chart_symbol = input.bool(true, "Symbol = ticker del grafico", tooltip="Ej. ZECUSDT en Binance. Desactiva para usar Epic IG manual.", group=grp_webhook)
+webhook_epic = input.string("ZECUSDT", "Epic / symbol manual", tooltip="IG EPIC o symbol si no usas ticker del grafico.", group=grp_webhook)
+bot_aligned_json = input.bool(true, "JSON alineado al bot", tooltip="Envia state=TENDENCIA y bias normalizado para evitar rechazos por RANGO/NO CHASE.", group=grp_webhook)
+webhook_secret = input.string("", "WEBHOOK_SECRET (igual que Railway)", tooltip="Opcional. Debe coincidir con WEBHOOK_SECRET del servidor.", group=grp_webhook)
+is_crypto_preset = asset_preset == "Crypto 24/7"
 
 
 // ═══════════════════════════════════════════
@@ -213,7 +217,8 @@ vol_ratio = avg_vol != 0 ? volume / avg_vol : na
 vol_ok = use_vol ? volume > avg_vol * mode_vol_mult : true
 
 dist_vwap_atr = atr != 0 ? math.abs(close - vwap_v) / atr : na
-dist_ok = dist_vwap_atr <= mode_max_dist
+max_dist_effective = is_crypto_preset ? math.max(mode_max_dist, 5.0) : mode_max_dist
+dist_ok = dist_vwap_atr <= max_dist_effective
 
 in_session = use_session ? not na(time(timeframe.period, trade_session)) : true
 
@@ -257,8 +262,9 @@ macd_state =
 // ═══════════════════════════════════════════
 // HTF
 // ═══════════════════════════════════════════
-htf_close = request.security(syminfo.tickerid, htf_tf, close)
-htf_ema   = request.security(syminfo.tickerid, htf_tf, ta.ema(close, htf_ema_len))
+[htf_close, htf_ema] = request.security(
+     syminfo.tickerid, htf_tf, [close, ta.ema(close, htf_ema_len)],
+     gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
 
 htf_long_ok  = use_htf ? htf_close > htf_ema : true
 htf_short_ok = use_htf ? htf_close < htf_ema : true
@@ -318,7 +324,7 @@ bias_col =
      c_neutral
 
 very_close_to_vwap = math.abs(close - vwap_v) < atr * 0.5
-too_extended = dist_vwap_atr > mode_max_dist
+too_extended = dist_vwap_atr > max_dist_effective
 
 // ═══════════════════════════════════════════
 // DETECTOR RANGO VWAP
@@ -633,25 +639,53 @@ if long_sig or short_sig
 // ═══════════════════════════════════════════
 escape_json_str(txt) =>
     x = str.replace_all(txt, "\\", "\\\\")
-    str.replace_all(x, "\"", "\\\"")
+    x := str.replace_all(x, "\"", "\\\"")
+    str.replace_all(x, "\n", " ")
+
+webhook_symbol() =>
+    use_chart_symbol ? syminfo.ticker : webhook_epic
+
+bot_api_bias(bool isLong) =>
+    if bot_aligned_json
+        isLong ?
+             (strong_long_bias ? "ALCISTA FUERTE" : "ALCISTA") :
+             (strong_short_bias ? "BAJISTA FUERTE" : "BAJISTA")
+    else
+        bias_txt
+
+bot_api_state(bool isLong) =>
+    if bot_aligned_json
+        "TENDENCIA"
+    else
+        institutional_state
 
 webhook_json_payload(bool isLong) =>
-    escBias = escape_json_str(bias_txt)
-    escState = escape_json_str(institutional_state)
+    sym = escape_json_str(webhook_symbol())
+    escBias = escape_json_str(bot_api_bias(isLong))
+    escState = escape_json_str(bot_api_state(isLong))
     sec = webhook_secret != "" ? ",\"secret\":\"" + escape_json_str(webhook_secret) + "\"" : ""
     sideStr = isLong ? "long" : "short"
-    '{"symbol":"' + webhook_epic + '","side":"' + sideStr + '","price":' + str.tostring(close, "#.########") + ',"bias":"' + escBias + '","state":"' + escState + '","long_score":' + str.tostring(long_score) + ',"short_score":' + str.tostring(short_score) + ',"dist_vwap_atr":' + str.tostring(nz(dist_vwap_atr, 0), "#.########") + ',"timeframe":"' + timeframe.period + '"' + sec + '}'
+    '{"symbol":"' + sym + '","side":"' + sideStr + '","price":' + str.tostring(close, "#.########") +
+     ',"bias":"' + escBias + '","state":"' + escState +
+     ',"long_score":' + str.tostring(long_score) + ',"short_score":' + str.tostring(short_score) +
+     ',"dist_vwap_atr":' + str.tostring(nz(dist_vwap_atr, 0), "#.########") +
+     ',"timeframe":"' + timeframe.period + '"' + sec + '}'
+
+alert_msg(bool isLong) =>
+    use_webhook_json ?
+         webhook_json_payload(isLong) :
+         (isLong ? "VWAP PRO LONG" : "VWAP PRO SHORT") + " | " + alert_symbol_name +
+         " | " + str.tostring(close, "#.##") + " | L " + str.tostring(long_score) +
+         " S " + str.tostring(short_score)
 
 // ═══════════════════════════════════════════
-// ALERTAS PROFESIONALES
+// ALERTAS (crear en TV: Any alert() function call + URL webhook)
 // ═══════════════════════════════════════════
 if use_alerts and long_sig
-    longMsg = use_webhook_json ? webhook_json_payload(true) : ("VWAP PRO LONG | " + alert_symbol_name + " | Precio: " + str.tostring(close, "#.##") + " | Bias: " + bias_txt + " | Estado: " + institutional_state + " | LONG Score: " + str.tostring(long_score) + "/10 | ADX: " + str.tostring(adx, "#.##") + " | RSI: " + str.tostring(rsi, "#.##") + " | Vol: " + str.tostring(vol_ratio, "#.##") + "x | DistVWAP: " + str.tostring(dist_vwap_atr, "#.##") + " ATR")
-    alert(longMsg, alert.freq_once_per_bar_close)
+    alert(alert_msg(true), alert.freq_once_per_bar_close)
 
 if use_alerts and short_sig
-    shortMsg = use_webhook_json ? webhook_json_payload(false) : ("VWAP PRO SHORT | " + alert_symbol_name + " | Precio: " + str.tostring(close, "#.##") + " | Bias: " + bias_txt + " | Estado: " + institutional_state + " | SHORT Score: " + str.tostring(short_score) + "/10 | ADX: " + str.tostring(adx, "#.##") + " | RSI: " + str.tostring(rsi, "#.##") + " | Vol: " + str.tostring(vol_ratio, "#.##") + "x | DistVWAP: " + str.tostring(dist_vwap_atr, "#.##") + " ATR")
-    alert(shortMsg, alert.freq_once_per_bar_close)
+    alert(alert_msg(false), alert.freq_once_per_bar_close)
 
 
 // ═══════════════════════════════════════════
@@ -669,9 +703,10 @@ if show_long_arrow
 if show_short_arrow
     last_visual_short := bar_index
 
-show_tiny   = signal_size_input == "Tiny"
-show_small  = signal_size_input == "Small"
-show_normal = signal_size_input == "Normal"
+arrow_size =
+     signal_size_input == "Tiny" ? size.tiny :
+     signal_size_input == "Small" ? size.small :
+     size.normal
 
 // ═══════════════════════════════════════════
 // PLOTS
@@ -773,44 +808,5 @@ if barstate.islast and show_dashboard
 // ═══════════════════════════════════════════
 // FLECHAS LIMPIAS
 // ═══════════════════════════════════════════
-plotshape(show_long_arrow and show_tiny,
-     title="LONG Tiny",
-     style=shape.triangleup,
-     location=location.belowbar,
-     color=c_long,
-     size=size.tiny)
-
-plotshape(show_long_arrow and show_small,
-     title="LONG Small",
-     style=shape.triangleup,
-     location=location.belowbar,
-     color=c_long,
-     size=size.small)
-
-plotshape(show_long_arrow and show_normal,
-     title="LONG Normal",
-     style=shape.triangleup,
-     location=location.belowbar,
-     color=c_long,
-     size=size.normal)
-
-plotshape(show_short_arrow and show_tiny,
-     title="SHORT Tiny",
-     style=shape.triangledown,
-     location=location.abovebar,
-     color=c_short,
-     size=size.tiny)
-
-plotshape(show_short_arrow and show_small,
-     title="SHORT Small",
-     style=shape.triangledown,
-     location=location.abovebar,
-     color=c_short,
-     size=size.small)
-
-plotshape(show_short_arrow and show_normal,
-     title="SHORT Normal",
-     style=shape.triangledown,
-     location=location.abovebar,
-     color=c_short,
-     size=size.normal)
+plotshape(show_long_arrow, title="LONG", style=shape.triangleup, location=location.belowbar, color=c_long, size=arrow_size)
+plotshape(show_short_arrow, title="SHORT", style=shape.triangledown, location=location.abovebar, color=c_short, size=arrow_size)

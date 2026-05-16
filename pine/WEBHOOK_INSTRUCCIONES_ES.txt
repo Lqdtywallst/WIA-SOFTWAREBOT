@@ -21,14 +21,18 @@ Guía rápida — Pine Script → Railway → FastAPI (JSON)
 
 5) Guarda el script (Save). Si Pine marca error de sintaxis, revisa que no hayas duplicado líneas.
 
-6) En TradingView: crear alerta → URL webhook:
+6) En TradingView: crear alerta → condición "Any alert() function call" → URL webhook:
    https://wia-softwarebot-production.up.railway.app/webhook
 
-   El mensaje JSON lo envía el Pine cuando "Enviar alertas como JSON" está en true.
-   El campo WEBHOOK_SECRET del Pine debe ser IGUAL al WEBHOOK_SECRET de Railway.
+   Inputs recomendados (grupo Webhook / Bot FastAPI):
+   - Preset mercado: Crypto 24/7 (para ZEC, BTC, etc.)
+   - Symbol = ticker del grafico: true
+   - JSON alineado al bot: true
+   - Enviar alertas como JSON: true
+   WEBHOOK_SECRET del Pine = WEBHOOK_SECRET de Railway (o vacío en ambos).
 
-7) Epic IG (campo nuevo en Pine): debe ser el código EPIC exacto de IG para ese mercado
-   (ejemplo placeholder Dow: IX.D.DOW.DAILY.IP — confírmalo en la plataforma IG).
+7) Epic IG manual: solo si desactivas "Symbol = ticker del grafico".
+   Para IG en vivo usa el EPIC exacto del instrumento en la plataforma IG.
 
 Importante:
 - Si Railway NO tiene WEBHOOK_SECRET, deja vacío el campo en Pine y NO uses campo secret en JSON
