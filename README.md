@@ -44,6 +44,10 @@ TRADING_MODE=paper
 
 In paper mode, accepted signals are shown in `/dashboard` and `/paper/trades`; no order is sent to IG.
 
+The IG HTTP client is **not** started in paper mode, so you can test with TradingView alone.
+
+Optional **`SYMBOL_MAP`** (JSON in `.env` / Railway): maps the webhook `symbol` (for example `ZECUSDT` from `{{ticker}}`) to another execution symbol. Keys are matched case-insensitively. `/health` reports `symbol_map_size` and whether an IG session was ever initialized (`ig_session_initialized`).
+
 ## Railway Deploy
 
 1. Create a GitHub repository and upload this project.
@@ -103,13 +107,26 @@ Example alert body:
 
 ## Signal Rules
 
-The bot only allows a trade when all filters pass:
+Thresholds are configurable via environment variables (see `.env.example`). Defaults match the original equities-style rules:
 
-- Short: `side` is `short`, `bias` contains `BAJISTA`, and `short_score >= 7`.
-- Long: `side` is `long`, `bias` contains `ALCISTA`, and `long_score >= 7`.
-- `state` must not contain `RANGO`.
-- `state` must not contain `NO CHASE`.
-- `dist_vwap_atr <= 4.0`.
+- Short: `side` is `short`, `bias` contains `BAJISTA`, and `short_score >= MIN_SHORT_SCORE` (default 7).
+- Long: `side` is `long`, `bias` contains `ALCISTA`, and `long_score >= MIN_LONG_SCORE` (default 7).
+- Optional: reject when `state` contains `RANGO` (`REJECT_ON_RANGO_STATE`, default true).
+- Optional: reject when `state` contains `NO CHASE` (`REJECT_ON_NO_CHASE_STATE`, default true).
+- `dist_vwap_atr <= MAX_DIST_VWAP_ATR` (default 4).
+
+`GET /health` returns the active `signal_filters` so you can confirm what Railway is running.
+
+### Crypto (IG CFD)
+
+Crypto trades around the clock and often oscillates further from VWAP in ATR-normalised terms than large-cap indices. Typical adjustments:
+
+- Raise `MAX_DIST_VWAP_ATR` (for example 5–7) if too many valid setups are rejected for distance.
+- Slightly lower `MIN_LONG_SCORE` / `MIN_SHORT_SCORE` (for example 6) only if your Pine script already gates quality.
+- Set **stop and TP distances** (`DEFAULT_STOP_DISTANCE`, `DEFAULT_TAKE_PROFIT_DISTANCE`) using IG’s **point** definition for the exact crypto epic you trade (BTC vs altcoins differ a lot).
+- In Pine, disable session filters meant for US cash hours so alerts can fire 24/7 when your logic says so.
+
+Use IG’s instrument search / API to copy the exact `symbol` (EPIC) into TradingView alerts (for example `CS.D.BITCOIN.CFD.IP` style identifiers vary by listing).
 
 ## Risk Management
 

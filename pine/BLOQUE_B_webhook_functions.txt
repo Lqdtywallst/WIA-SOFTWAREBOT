@@ -1,0 +1,14 @@
+
+// ═══════════════════════════════════════════
+// WEBHOOK JSON (FastAPI bot)
+// ═══════════════════════════════════════════
+escape_json_str(txt) =>
+    x = str.replace_all(txt, "\\", "\\\\")
+    str.replace_all(x, "\"", "\\\"")
+
+webhook_json_payload(bool isLong) =>
+    escBias = escape_json_str(bias_txt)
+    escState = escape_json_str(institutional_state)
+    sec = webhook_secret != "" ? ",\"secret\":\"" + escape_json_str(webhook_secret) + "\"" : ""
+    sideStr = isLong ? "long" : "short"
+    '{"symbol":"' + webhook_epic + '","side":"' + sideStr + '","price":' + str.tostring(close, "#.########") + ',"bias":"' + escBias + '","state":"' + escState + '","long_score":' + str.tostring(long_score) + ',"short_score":' + str.tostring(short_score) + ',"dist_vwap_atr":' + str.tostring(nz(dist_vwap_atr, 0), "#.########") + ',"timeframe":"' + timeframe.period + '"' + sec + '}'

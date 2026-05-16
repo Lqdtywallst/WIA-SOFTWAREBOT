@@ -1,0 +1,35 @@
+Guía rápida — Pine Script → Railway → FastAPI (JSON)
+
+1) Abre tu indicador en TradingView → Pine Editor (icono {} debajo del gráfico).
+
+2) PASO A — Busca esta línea exacta:
+   alert_symbol_name = input.string("YMM / US30 / DOW", "Nombre Mercado", group=grp7)
+
+   Justo DEBAJO de esa línea, pega todo el contenido del archivo:
+   BLOQUE_A_webhook_inputs.txt
+
+3) PASO B — Busca el comentario:
+   // ═══════════════════════════════════════════
+   // ALERTAS PROFESIONALES
+
+   Justo ENCIMA de ese bloque (antes de las dos líneas de ═══ y ALERTAS), pega todo el archivo:
+   BLOQUE_B_webhook_functions.txt
+
+4) PASO C — Sustituye las DOS alertas largas (if use_alerts and long_sig ... y short_sig ...)
+   por el contenido del archivo:
+   BLOQUE_C_alertas_json.txt
+
+5) Guarda el script (Save). Si Pine marca error de sintaxis, revisa que no hayas duplicado líneas.
+
+6) En TradingView: crear alerta → URL webhook:
+   https://wia-softwarebot-production.up.railway.app/webhook
+
+   El mensaje JSON lo envía el Pine cuando "Enviar alertas como JSON" está en true.
+   El campo WEBHOOK_SECRET del Pine debe ser IGUAL al WEBHOOK_SECRET de Railway.
+
+7) Epic IG (campo nuevo en Pine): debe ser el código EPIC exacto de IG para ese mercado
+   (ejemplo placeholder Dow: IX.D.DOW.DAILY.IP — confírmalo en la plataforma IG).
+
+Importante:
+- Si Railway NO tiene WEBHOOK_SECRET, deja vacío el campo en Pine y NO uses campo secret en JSON
+  (el addon solo añade "secret" si escribes algo en Pine).

@@ -1,0 +1,816 @@
+//@version=5
+indicator("VWAP Pro — Institutional Bias Engine Clean", overlay=true,
+     max_lines_count=500,
+     max_labels_count=500)
+
+// ═══════════════════════════════════════════
+// MODO
+// ═══════════════════════════════════════════
+grp0 = "Modo de Estrategia"
+mode = input.string("Algoritmico Agresivo", "Modo",
+     options=["Conservador", "Balanceado", "Diario", "Algoritmico Agresivo"], group=grp0)
+
+// ═══════════════════════════════════════════
+// VWAP
+// ═══════════════════════════════════════════
+grp1 = "VWAP"
+reset_period = input.string("D", "Reset Period", options=["D","W","M"], group=grp1)
+show_bands   = input.bool(true, "Show Bands", group=grp1)
+min_bars_after_reset = input.int(1, "Min Velas tras Reset VWAP", minval=0, maxval=100, group=grp1)
+
+// ═══════════════════════════════════════════
+// FILTROS INSTITUCIONALES
+// ═══════════════════════════════════════════
+grp3 = "Filtros Institucionales"
+
+ema_len  = input.int(50, "EMA Tendencia", minval=5, maxval=300, group=grp3)
+bias_len = input.int(5, "Velas para Sesgo", minval=2, maxval=50, group=grp3)
+
+vol_mult_input = input.float(0.65, "Volumen Minimo", minval=0.1, maxval=5.0, step=0.05, group=grp3)
+adx_min_input  = input.float(8.0, "ADX Minimo", minval=1.0, maxval=50.0, step=1.0, group=grp3)
+max_dist_input = input.float(3.0, "Distancia Max VWAP ATR", minval=0.2, maxval=12.0, step=0.1, group=grp3)
+
+use_vol = input.bool(true, "Usar Filtro Volumen", group=grp3)
+
+use_adx = input.bool(true, "Usar Filtro ADX", group=grp3)
+adx_len = input.int(14, "ADX Length", minval=2, maxval=50, group=grp3)
+
+use_rsi = input.bool(true, "Usar Filtro RSI", group=grp3)
+rsi_len = input.int(14, "RSI Length", minval=2, maxval=50, group=grp3)
+rsi_long_min  = input.int(38, "RSI Min Long", minval=1, maxval=100, group=grp3)
+rsi_long_max  = input.int(78, "RSI Max Long", minval=1, maxval=100, group=grp3)
+rsi_short_min = input.int(10, "RSI Min Short", minval=1, maxval=100, group=grp3)
+rsi_short_max = input.int(70, "RSI Max Short", minval=1, maxval=100, group=grp3)
+
+use_macd = input.bool(true, "Usar MACD Flexible", group=grp3)
+macd_fast   = input.int(12, "MACD Fast", minval=1, maxval=100, group=grp3)
+macd_slow   = input.int(26, "MACD Slow", minval=1, maxval=200, group=grp3)
+macd_signal = input.int(9, "MACD Signal", minval=1, maxval=100, group=grp3)
+
+// ═══════════════════════════════════════════
+// MOTOR DE ENTRADAS
+// ═══════════════════════════════════════════
+grp4 = "Motor de Entradas"
+
+use_cross_vwap      = input.bool(true, "Entrada Cruce VWAP", group=grp4)
+use_pullback_vwap   = input.bool(true, "Pullback VWAP", group=grp4)
+use_pullback_ema    = input.bool(true, "Pullback EMA", group=grp4)
+use_momentum        = input.bool(true, "Momentum Continuacion", group=grp4)
+use_structure_break = input.bool(true, "Ruptura de Estructura", group=grp4)
+use_rejection       = input.bool(true, "Rechazo Institucional", group=grp4)
+use_micro_pullback  = input.bool(true, "Micro Pullback", group=grp4)
+use_band_reversal   = input.bool(false, "Reversion Bandas VWAP", group=grp4)
+
+pullback_atr_zone = input.float(0.40, "Zona Pullback ATR", minval=0.05, maxval=2.0, step=0.05, group=grp4)
+micro_atr_zone    = input.float(0.35, "Zona Micro Pullback ATR", minval=0.05, maxval=2.0, step=0.05, group=grp4)
+structure_len     = input.int(5, "Velas Estructura", minval=2, maxval=50, group=grp4)
+
+// ═══════════════════════════════════════════
+// HTF
+// ═══════════════════════════════════════════
+grp5 = "Timeframe Superior"
+
+use_htf = input.bool(true, "Usar Tendencia HTF", group=grp5)
+htf_tf  = input.timeframe("15", "Timeframe Superior", group=grp5)
+htf_ema_len = input.int(50, "EMA HTF", minval=5, maxval=300, group=grp5)
+
+// ═══════════════════════════════════════════
+// CONTROL OPERATIVO
+// ═══════════════════════════════════════════
+grp6 = "Control Operativo"
+
+max_trades_day_input = input.int(80, "Max Señales Día", minval=1, maxval=300, group=grp6)
+cooldown_input       = input.int(2, "Cooldown", minval=0, maxval=100, group=grp6)
+use_session          = input.bool(false, "Operar Solo en Sesion", group=grp6)
+trade_session        = input.session("0930-1600", "Sesion", group=grp6)
+
+block_vwap_range      = input.bool(true, "Bloquear Rango VWAP", group=grp6)
+range_lookback        = input.int(20, "Velas para detectar rango", minval=5, maxval=100, group=grp6)
+max_vwap_crosses      = input.int(4, "Max cruces VWAP permitidos", minval=1, maxval=20, group=grp6)
+only_strong_bias      = input.bool(true, "Solo operar Bias Fuerte", group=grp6)
+min_signal_score      = input.int(7, "Score mínimo para señal", minval=1, maxval=10, group=grp6)
+
+// ═══════════════════════════════════════════
+// VISUAL
+// ═══════════════════════════════════════════
+grp_visual = "Visual Institucional"
+
+show_signals      = input.bool(true, "Mostrar Flechas", group=grp_visual)
+visual_gap        = input.int(4, "Separacion Visual Flechas", minval=1, maxval=50, group=grp_visual)
+signal_size_input = input.string("Small", "Tamano Flecha", options=["Tiny", "Small", "Normal"], group=grp_visual)
+
+show_ema_bias     = input.bool(true, "Mostrar EMA Bias", group=grp_visual)
+show_bg_bias      = input.bool(true, "Mostrar Fondo VWAP", group=grp_visual)
+show_line_labels  = input.bool(true, "Mostrar Etiquetas Laterales", group=grp_visual)
+show_dashboard    = input.bool(true, "Mostrar Panel Institucional", group=grp_visual)
+label_offset      = input.int(10, "Offset Etiquetas Derecha", minval=1, maxval=100, group=grp_visual)
+
+// ═══════════════════════════════════════════
+// ALERTAS
+// ═══════════════════════════════════════════
+grp7 = "Alertas"
+
+use_alerts = input.bool(true, "Activar Alertas", group=grp7)
+alert_symbol_name = input.string("YMM / US30 / DOW", "Nombre Mercado", group=grp7)
+
+grp_webhook = "Webhook / IG Bot (JSON)"
+use_webhook_json = input.bool(true, "Enviar alertas como JSON", group=grp_webhook)
+webhook_epic = input.string("IX.D.DOW.DAILY.IP", "Epic IG (para API / bot)", tooltip="Código EPIC exacto en IG Markets para este mercado.", group=grp_webhook)
+webhook_secret = input.string("", "WEBHOOK_SECRET (igual que Railway)", tooltip="Opcional si Railway tiene WEBHOOK_SECRET configurado.", group=grp_webhook)
+
+
+// ═══════════════════════════════════════════
+// PARAMETROS POR MODO
+// ═══════════════════════════════════════════
+is_aggressive = mode == "Algoritmico Agresivo"
+
+mode_vol_mult =
+     mode == "Conservador" ? 1.35 :
+     mode == "Balanceado"  ? 1.10 :
+     is_aggressive         ? vol_mult_input :
+     vol_mult_input
+
+mode_adx_min =
+     mode == "Conservador" ? 20.0 :
+     mode == "Balanceado"  ? 14.0 :
+     is_aggressive         ? adx_min_input :
+     adx_min_input
+
+mode_max_dist =
+     mode == "Conservador" ? 1.0 :
+     mode == "Balanceado"  ? 1.8 :
+     is_aggressive         ? max_dist_input :
+     max_dist_input
+
+mode_trades =
+     mode == "Conservador" ? 5 :
+     mode == "Balanceado"  ? 20 :
+     is_aggressive         ? max_trades_day_input :
+     max_trades_day_input
+
+mode_cooldown =
+     mode == "Conservador" ? 12 :
+     mode == "Balanceado"  ? 6 :
+     is_aggressive         ? cooldown_input :
+     cooldown_input
+
+// ═══════════════════════════════════════════
+// COLORES
+// ═══════════════════════════════════════════
+c_vwap    = #00ccff
+c_long    = #00cc66
+c_short   = #cc2244
+c_band1   = #ffcc00
+c_band2   = #ff44aa
+c_bias    = #ffffff
+c_neutral = color.gray
+
+// ═══════════════════════════════════════════
+// VWAP CON RESET
+// ═══════════════════════════════════════════
+src = hlc3
+
+var float cum_pv  = na
+var float cum_v   = na
+var float cum_p2v = na
+var int bars_from_reset = 0
+
+new_period = timeframe.change(reset_period)
+
+if new_period or na(cum_pv)
+    cum_pv  := src * volume
+    cum_v   := volume
+    cum_p2v := src * src * volume
+    bars_from_reset := 0
+else
+    cum_pv  += src * volume
+    cum_v   += volume
+    cum_p2v += src * src * volume
+    bars_from_reset += 1
+
+vwap_v = cum_v != 0 ? cum_pv / cum_v : na
+
+variance = cum_v != 0 ? cum_p2v / cum_v - vwap_v * vwap_v : na
+variance := variance < 0 ? 0 : variance
+
+stdev = math.sqrt(variance)
+
+u1 = vwap_v + stdev
+l1 = vwap_v - stdev
+u2 = vwap_v + stdev * 2
+l2 = vwap_v - stdev * 2
+
+reset_ok = bars_from_reset >= min_bars_after_reset
+
+// ═══════════════════════════════════════════
+// INDICADORES BASE
+// ═══════════════════════════════════════════
+atr = ta.atr(14)
+ema = ta.ema(close, ema_len)
+
+avg_vol = ta.sma(volume, 20)
+vol_ratio = avg_vol != 0 ? volume / avg_vol : na
+vol_ok = use_vol ? volume > avg_vol * mode_vol_mult : true
+
+dist_vwap_atr = atr != 0 ? math.abs(close - vwap_v) / atr : na
+dist_ok = dist_vwap_atr <= mode_max_dist
+
+in_session = use_session ? not na(time(timeframe.period, trade_session)) : true
+
+// ═══════════════════════════════════════════
+// RSI
+// ═══════════════════════════════════════════
+rsi = ta.rsi(close, rsi_len)
+
+rsi_long_ok  = use_rsi ? rsi >= rsi_long_min and rsi <= rsi_long_max : true
+rsi_short_ok = use_rsi ? rsi >= rsi_short_min and rsi <= rsi_short_max : true
+
+// ═══════════════════════════════════════════
+// ADX / DMI
+// ═══════════════════════════════════════════
+[plus_di, minus_di, adx] = ta.dmi(adx_len, adx_len)
+
+adx_ok = use_adx ? adx >= mode_adx_min : true
+di_long_ok = use_adx ? plus_di > minus_di : true
+di_short_ok = use_adx ? minus_di > plus_di : true
+
+// ═══════════════════════════════════════════
+// MACD FLEXIBLE
+// ═══════════════════════════════════════════
+[macd_line, macd_signal_line, macd_hist] = ta.macd(close, macd_fast, macd_slow, macd_signal)
+
+macd_long_ok =
+     use_macd ?
+         macd_line > macd_signal_line or macd_hist > 0 or macd_hist > macd_hist[1] :
+         true
+
+macd_short_ok =
+     use_macd ?
+         macd_line < macd_signal_line or macd_hist < 0 or macd_hist < macd_hist[1] :
+         true
+
+macd_state =
+     macd_long_ok and not macd_short_ok ? "BULL" :
+     macd_short_ok and not macd_long_ok ? "BEAR" :
+     "MIXTO"
+
+// ═══════════════════════════════════════════
+// HTF
+// ═══════════════════════════════════════════
+htf_close = request.security(syminfo.tickerid, htf_tf, close)
+htf_ema   = request.security(syminfo.tickerid, htf_tf, ta.ema(close, htf_ema_len))
+
+htf_long_ok  = use_htf ? htf_close > htf_ema : true
+htf_short_ok = use_htf ? htf_close < htf_ema : true
+
+// ═══════════════════════════════════════════
+// SESGO
+// ═══════════════════════════════════════════
+ema_up    = ema > ema[bias_len]
+ema_down  = ema < ema[bias_len]
+
+vwap_up   = vwap_v > vwap_v[bias_len]
+vwap_down = vwap_v < vwap_v[bias_len]
+
+price_above_core = close > vwap_v and close > ema
+price_below_core = close < vwap_v and close < ema
+
+market_bias_long =
+     price_above_core and
+     ema_up and
+     vwap_up and
+     htf_long_ok
+
+market_bias_short =
+     price_below_core and
+     ema_down and
+     vwap_down and
+     htf_short_ok
+
+soft_bias_long =
+     close > ema and
+     close > vwap_v and
+     htf_long_ok
+
+soft_bias_short =
+     close < ema and
+     close < vwap_v and
+     htf_short_ok
+
+bias_score =
+     (close > vwap_v ? 1 : -1) +
+     (close > ema ? 1 : -1) +
+     (htf_long_ok ? 1 : htf_short_ok ? -1 : 0) +
+     (vwap_up ? 1 : vwap_down ? -1 : 0) +
+     (ema_up ? 1 : ema_down ? -1 : 0) +
+     (macd_long_ok ? 1 : macd_short_ok ? -1 : 0)
+
+bias_txt =
+     bias_score >= 4 ? "ALCISTA FUERTE" :
+     bias_score >= 2 ? "ALCISTA" :
+     bias_score <= -4 ? "BAJISTA FUERTE" :
+     bias_score <= -2 ? "BAJISTA" :
+     "NEUTRAL / RANGO"
+
+bias_col =
+     bias_score >= 2 ? c_long :
+     bias_score <= -2 ? c_short :
+     c_neutral
+
+very_close_to_vwap = math.abs(close - vwap_v) < atr * 0.5
+too_extended = dist_vwap_atr > mode_max_dist
+
+// ═══════════════════════════════════════════
+// DETECTOR RANGO VWAP
+// ═══════════════════════════════════════════
+vwap_cross_event = ta.cross(close, vwap_v) ? 1.0 : 0.0
+vwap_cross_count = math.sum(vwap_cross_event, range_lookback)
+vwap_range = block_vwap_range ? vwap_cross_count >= max_vwap_crosses : false
+
+strong_long_bias  = bias_score >= 4
+strong_short_bias = bias_score <= -4
+
+bias_filter_long_ok =
+     only_strong_bias ? strong_long_bias : bias_score >= 2
+
+bias_filter_short_ok =
+     only_strong_bias ? strong_short_bias : bias_score <= -2
+
+institutional_state =
+     vwap_range ? "RANGO / EVITAR" :
+     bias_score <= -4 and close < vwap_v and close < ema and not too_extended ? "BUSCAR SHORT PULLBACK" :
+     bias_score >= 4 and close > vwap_v and close > ema and not too_extended ? "BUSCAR LONG PULLBACK" :
+     too_extended and bias_score <= -2 ? "NO CHASE / ESPERAR REBOTE" :
+     too_extended and bias_score >= 2 ? "NO CHASE / ESPERAR RETROCESO" :
+     very_close_to_vwap ? "VWAP / RANGO" :
+     "ESPERAR CONFIRMACION"
+
+// ═══════════════════════════════════════════
+// SCORE INSTITUCIONAL 0-10
+// ═══════════════════════════════════════════
+long_score_raw =
+     (close > vwap_v ? 1 : 0) +
+     (close > ema ? 1 : 0) +
+     (htf_long_ok ? 1 : 0) +
+     (vwap_up ? 1 : 0) +
+     (ema_up ? 1 : 0) +
+     (adx_ok ? 1 : 0) +
+     (rsi_long_ok ? 1 : 0) +
+     (macd_long_ok ? 1 : 0) +
+     (vol_ok ? 1 : 0) +
+     (not too_extended ? 1 : 0)
+
+short_score_raw =
+     (close < vwap_v ? 1 : 0) +
+     (close < ema ? 1 : 0) +
+     (htf_short_ok ? 1 : 0) +
+     (vwap_down ? 1 : 0) +
+     (ema_down ? 1 : 0) +
+     (adx_ok ? 1 : 0) +
+     (rsi_short_ok ? 1 : 0) +
+     (macd_short_ok ? 1 : 0) +
+     (vol_ok ? 1 : 0) +
+     (not too_extended ? 1 : 0)
+
+long_score = math.min(long_score_raw, 10)
+short_score = math.min(short_score_raw, 10)
+
+long_score_ok = long_score >= min_signal_score
+short_score_ok = short_score >= min_signal_score
+
+// ═══════════════════════════════════════════
+// VELA / RECHAZO INSTITUCIONAL
+// ═══════════════════════════════════════════
+candle_range = high - low
+body_size = math.abs(close - open)
+body_pct = candle_range > 0 ? body_size / candle_range * 100 : 0
+
+upper_wick = high - math.max(open, close)
+lower_wick = math.min(open, close) - low
+
+bull_candle = close > open and body_pct >= 5
+bear_candle = close < open and body_pct >= 5
+
+close_near_high = candle_range > 0 ? close >= low + candle_range * 0.45 : true
+close_near_low  = candle_range > 0 ? close <= high - candle_range * 0.45 : true
+
+bull_rejection =
+     lower_wick > upper_wick and
+     close > ema and
+     close > vwap_v
+
+bear_rejection =
+     upper_wick > lower_wick and
+     close < ema and
+     close < vwap_v
+
+failed_ema_reclaim_short =
+     high >= ema - atr * pullback_atr_zone and
+     close < ema
+
+failed_vwap_reclaim_short =
+     high >= vwap_v - atr * pullback_atr_zone and
+     close < vwap_v
+
+failed_ema_loss_long =
+     low <= ema + atr * pullback_atr_zone and
+     close > ema
+
+failed_vwap_loss_long =
+     low <= vwap_v + atr * pullback_atr_zone and
+     close > vwap_v
+
+// ═══════════════════════════════════════════
+// CONTROL OPERATIVO
+// ═══════════════════════════════════════════
+var int trades_today = 0
+var int last_trade_bar = na
+
+if timeframe.change("D")
+    trades_today := 0
+
+cooldown_ok = na(last_trade_bar) or bar_index - last_trade_bar >= mode_cooldown
+trades_ok = trades_today < mode_trades
+
+// ═══════════════════════════════════════════
+// MOTOR DE SEÑALES
+// ═══════════════════════════════════════════
+cross_up = ta.crossover(close, vwap_v)
+cross_dn = ta.crossunder(close, vwap_v)
+
+long_cross_signal =
+     use_cross_vwap and
+     cross_up and
+     soft_bias_long and
+     close_near_high
+
+short_cross_signal =
+     use_cross_vwap and
+     cross_dn and
+     soft_bias_short and
+     close_near_low
+
+long_pullback_vwap =
+     use_pullback_vwap and
+     soft_bias_long and
+     failed_vwap_loss_long and
+     (bull_candle or bull_rejection or close > close[1])
+
+short_pullback_vwap =
+     use_pullback_vwap and
+     soft_bias_short and
+     failed_vwap_reclaim_short and
+     (bear_candle or bear_rejection or close < close[1])
+
+long_pullback_ema =
+     use_pullback_ema and
+     soft_bias_long and
+     failed_ema_loss_long and
+     (bull_candle or bull_rejection or close > close[1])
+
+short_pullback_ema =
+     use_pullback_ema and
+     soft_bias_short and
+     failed_ema_reclaim_short and
+     (bear_candle or bear_rejection or close < close[1])
+
+long_momentum =
+     is_aggressive and
+     use_momentum and
+     soft_bias_long and
+     close > close[1] and
+     close > ema
+
+short_momentum =
+     is_aggressive and
+     use_momentum and
+     soft_bias_short and
+     close < close[1] and
+     close < ema
+
+recent_high = ta.highest(high, structure_len)[1]
+recent_low  = ta.lowest(low, structure_len)[1]
+
+long_structure_break =
+     use_structure_break and
+     soft_bias_long and
+     close > recent_high
+
+short_structure_break =
+     use_structure_break and
+     soft_bias_short and
+     close < recent_low
+
+long_rejection_signal =
+     use_rejection and
+     soft_bias_long and
+     bull_rejection
+
+short_rejection_signal =
+     use_rejection and
+     soft_bias_short and
+     bear_rejection
+
+long_micro_pullback =
+     is_aggressive and
+     use_micro_pullback and
+     soft_bias_long and
+     low <= ema + atr * micro_atr_zone and
+     close > ema
+
+short_micro_pullback =
+     is_aggressive and
+     use_micro_pullback and
+     soft_bias_short and
+     high >= ema - atr * micro_atr_zone and
+     close < ema
+
+long_reversal_band =
+     is_aggressive and
+     use_band_reversal and
+     soft_bias_long and
+     low <= l1 and
+     close > l1
+
+short_reversal_band =
+     is_aggressive and
+     use_band_reversal and
+     soft_bias_short and
+     high >= u1 and
+     close < u1
+
+long_raw =
+     long_cross_signal or
+     long_pullback_vwap or
+     long_pullback_ema or
+     long_momentum or
+     long_structure_break or
+     long_rejection_signal or
+     long_micro_pullback or
+     long_reversal_band
+
+short_raw =
+     short_cross_signal or
+     short_pullback_vwap or
+     short_pullback_ema or
+     short_momentum or
+     short_structure_break or
+     short_rejection_signal or
+     short_micro_pullback or
+     short_reversal_band
+
+// ═══════════════════════════════════════════
+// FILTRO FINAL
+// ═══════════════════════════════════════════
+long_quality_ok =
+     is_aggressive ?
+         vol_ok and
+         dist_ok and
+         reset_ok and
+         soft_bias_long and
+         adx_ok and
+         rsi_long_ok and
+         macd_long_ok and
+         bias_filter_long_ok and
+         long_score_ok and
+         not vwap_range :
+         vol_ok and
+         dist_ok and
+         reset_ok and
+         market_bias_long and
+         rsi_long_ok and
+         adx_ok and
+         di_long_ok and
+         macd_long_ok and
+         bias_filter_long_ok and
+         long_score_ok and
+         not vwap_range
+
+short_quality_ok =
+     is_aggressive ?
+         vol_ok and
+         dist_ok and
+         reset_ok and
+         soft_bias_short and
+         adx_ok and
+         rsi_short_ok and
+         macd_short_ok and
+         bias_filter_short_ok and
+         short_score_ok and
+         not vwap_range :
+         vol_ok and
+         dist_ok and
+         reset_ok and
+         market_bias_short and
+         rsi_short_ok and
+         adx_ok and
+         di_short_ok and
+         macd_short_ok and
+         bias_filter_short_ok and
+         short_score_ok and
+         not vwap_range
+
+long_sig =
+     long_raw and
+     long_quality_ok and
+     in_session and
+     cooldown_ok and
+     trades_ok
+
+short_sig =
+     short_raw and
+     short_quality_ok and
+     in_session and
+     cooldown_ok and
+     trades_ok
+
+if long_sig or short_sig
+    trades_today += 1
+    last_trade_bar := bar_index
+
+// ═══════════════════════════════════════════
+// WEBHOOK JSON (FastAPI bot)
+// ═══════════════════════════════════════════
+escape_json_str(txt) =>
+    x = str.replace_all(txt, "\\", "\\\\")
+    str.replace_all(x, "\"", "\\\"")
+
+webhook_json_payload(bool isLong) =>
+    escBias = escape_json_str(bias_txt)
+    escState = escape_json_str(institutional_state)
+    sec = webhook_secret != "" ? ",\"secret\":\"" + escape_json_str(webhook_secret) + "\"" : ""
+    sideStr = isLong ? "long" : "short"
+    '{"symbol":"' + webhook_epic + '","side":"' + sideStr + '","price":' + str.tostring(close, "#.########") + ',"bias":"' + escBias + '","state":"' + escState + '","long_score":' + str.tostring(long_score) + ',"short_score":' + str.tostring(short_score) + ',"dist_vwap_atr":' + str.tostring(nz(dist_vwap_atr, 0), "#.########") + ',"timeframe":"' + timeframe.period + '"' + sec + '}'
+
+// ═══════════════════════════════════════════
+// ALERTAS PROFESIONALES
+// ═══════════════════════════════════════════
+if use_alerts and long_sig
+    longMsg = use_webhook_json ? webhook_json_payload(true) : ("VWAP PRO LONG | " + alert_symbol_name + " | Precio: " + str.tostring(close, "#.##") + " | Bias: " + bias_txt + " | Estado: " + institutional_state + " | LONG Score: " + str.tostring(long_score) + "/10 | ADX: " + str.tostring(adx, "#.##") + " | RSI: " + str.tostring(rsi, "#.##") + " | Vol: " + str.tostring(vol_ratio, "#.##") + "x | DistVWAP: " + str.tostring(dist_vwap_atr, "#.##") + " ATR")
+    alert(longMsg, alert.freq_once_per_bar_close)
+
+if use_alerts and short_sig
+    shortMsg = use_webhook_json ? webhook_json_payload(false) : ("VWAP PRO SHORT | " + alert_symbol_name + " | Precio: " + str.tostring(close, "#.##") + " | Bias: " + bias_txt + " | Estado: " + institutional_state + " | SHORT Score: " + str.tostring(short_score) + "/10 | ADX: " + str.tostring(adx, "#.##") + " | RSI: " + str.tostring(rsi, "#.##") + " | Vol: " + str.tostring(vol_ratio, "#.##") + "x | DistVWAP: " + str.tostring(dist_vwap_atr, "#.##") + " ATR")
+    alert(shortMsg, alert.freq_once_per_bar_close)
+
+
+// ═══════════════════════════════════════════
+// SEPARACION VISUAL
+// ═══════════════════════════════════════════
+var int last_visual_long = na
+var int last_visual_short = na
+
+show_long_arrow = show_signals and long_sig and (na(last_visual_long) or bar_index - last_visual_long >= visual_gap)
+show_short_arrow = show_signals and short_sig and (na(last_visual_short) or bar_index - last_visual_short >= visual_gap)
+
+if show_long_arrow
+    last_visual_long := bar_index
+
+if show_short_arrow
+    last_visual_short := bar_index
+
+show_tiny   = signal_size_input == "Tiny"
+show_small  = signal_size_input == "Small"
+show_normal = signal_size_input == "Normal"
+
+// ═══════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════
+plot(vwap_v, "VWAP", color=c_vwap, linewidth=3)
+plot(show_ema_bias ? ema : na, "EMA 50", color=color.new(c_bias, 0), linewidth=2)
+
+pu1 = plot(show_bands ? u1 : na, "VWAP +1σ", color=color.new(c_band1, 20), linewidth=1)
+pl1 = plot(show_bands ? l1 : na, "VWAP -1σ", color=color.new(c_band1, 20), linewidth=1)
+
+pu2 = plot(show_bands ? u2 : na, "VWAP +2σ", color=color.new(c_band2, 20), linewidth=1)
+pl2 = plot(show_bands ? l2 : na, "VWAP -2σ", color=color.new(c_band2, 20), linewidth=1)
+
+fill(pu1, pl1, color=color.new(c_band1, 88))
+fill(pu2, pl2, color=color.new(c_band2, 93))
+
+bgcolor(show_bg_bias ? (close > vwap_v ? color.new(c_long, 97) : color.new(c_short, 97)) : na)
+
+// ═══════════════════════════════════════════
+// ETIQUETAS LATERALES DE LINEAS
+// ═══════════════════════════════════════════
+var label lbl_vwap = na
+var label lbl_ema  = na
+var label lbl_u1   = na
+var label lbl_l1   = na
+var label lbl_u2   = na
+var label lbl_l2   = na
+
+if barstate.islast and show_line_labels
+    label.delete(lbl_vwap)
+    label.delete(lbl_ema)
+    label.delete(lbl_u1)
+    label.delete(lbl_l1)
+    label.delete(lbl_u2)
+    label.delete(lbl_l2)
+
+    x_lab = bar_index + label_offset
+
+    lbl_vwap := label.new(x_lab, vwap_v, "VWAP", style=label.style_label_left, color=color.new(c_vwap, 0), textcolor=color.white, size=size.small)
+    lbl_ema  := label.new(x_lab, ema, "EMA " + str.tostring(ema_len), style=label.style_label_left, color=color.new(c_bias, 0), textcolor=color.black, size=size.small)
+
+    if show_bands
+        lbl_u1 := label.new(x_lab, u1, "VWAP +1σ", style=label.style_label_left, color=color.new(c_band1, 0), textcolor=color.black, size=size.tiny)
+        lbl_l1 := label.new(x_lab, l1, "VWAP -1σ", style=label.style_label_left, color=color.new(c_band1, 0), textcolor=color.black, size=size.tiny)
+        lbl_u2 := label.new(x_lab, u2, "VWAP +2σ", style=label.style_label_left, color=color.new(c_band2, 0), textcolor=color.white, size=size.tiny)
+        lbl_l2 := label.new(x_lab, l2, "VWAP -2σ", style=label.style_label_left, color=color.new(c_band2, 0), textcolor=color.white, size=size.tiny)
+
+// ═══════════════════════════════════════════
+// PANEL INSTITUCIONAL
+// ═══════════════════════════════════════════
+var table dash = table.new(position.top_right, 2, 15, border_width=1)
+
+if barstate.islast and show_dashboard
+    table.cell(dash, 0, 0, "VWAP PRO", text_color=color.white, bgcolor=color.new(color.black, 0))
+    table.cell(dash, 1, 0, "INSTITUTIONAL", text_color=color.white, bgcolor=color.new(bias_col, 0))
+
+    table.cell(dash, 0, 1, "Bias", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 1, bias_txt, text_color=color.white, bgcolor=color.new(bias_col, 0))
+
+    table.cell(dash, 0, 2, "Estado", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 2, institutional_state, text_color=color.white, bgcolor=vwap_range ? color.new(c_short, 0) : color.new(bias_col, 15))
+
+    table.cell(dash, 0, 3, "LONG Score", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 3, str.tostring(long_score) + "/10", text_color=color.white, bgcolor=long_score >= 7 ? color.new(c_long, 10) : color.new(c_neutral, 25))
+
+    table.cell(dash, 0, 4, "SHORT Score", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 4, str.tostring(short_score) + "/10", text_color=color.white, bgcolor=short_score >= 7 ? color.new(c_short, 10) : color.new(c_neutral, 25))
+
+    table.cell(dash, 0, 5, "VWAP Rango", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 5, vwap_range ? "SI / EVITAR" : "NO", text_color=color.white, bgcolor=vwap_range ? color.new(c_short, 10) : color.new(c_long, 25))
+
+    table.cell(dash, 0, 6, "Sesion", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 6, in_session ? "ACTIVA" : "FUERA", text_color=color.white, bgcolor=in_session ? color.new(c_long, 25) : color.new(c_short, 25))
+
+    table.cell(dash, 0, 7, "HTF " + htf_tf, text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 7, htf_long_ok ? "ALCISTA" : htf_short_ok ? "BAJISTA" : "NEUTRAL", text_color=color.white, bgcolor=htf_long_ok ? color.new(c_long, 20) : htf_short_ok ? color.new(c_short, 20) : color.new(c_neutral, 20))
+
+    table.cell(dash, 0, 8, "Precio/VWAP", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 8, close > vwap_v ? "ENCIMA" : "DEBAJO", text_color=color.white, bgcolor=close > vwap_v ? color.new(c_long, 20) : color.new(c_short, 20))
+
+    table.cell(dash, 0, 9, "Precio/EMA", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 9, close > ema ? "ENCIMA" : "DEBAJO", text_color=color.white, bgcolor=close > ema ? color.new(c_long, 20) : color.new(c_short, 20))
+
+    table.cell(dash, 0, 10, "ADX", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 10, str.tostring(adx, "#.##") + (adx_ok ? " OK" : " BAJO"), text_color=color.white, bgcolor=adx_ok ? color.new(c_long, 25) : color.new(c_neutral, 25))
+
+    table.cell(dash, 0, 11, "RSI", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 11, str.tostring(rsi, "#.##"), text_color=color.white, bgcolor=rsi > 70 ? color.new(c_short, 35) : rsi < 30 ? color.new(c_long, 35) : color.new(c_neutral, 25))
+
+    table.cell(dash, 0, 12, "MACD", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 12, macd_state, text_color=color.white, bgcolor=macd_state == "BULL" ? color.new(c_long, 25) : macd_state == "BEAR" ? color.new(c_short, 25) : color.new(c_neutral, 25))
+
+    table.cell(dash, 0, 13, "Volumen", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 13, str.tostring(vol_ratio, "#.##") + "x " + (vol_ok ? "OK" : "BAJO"), text_color=color.white, bgcolor=vol_ok ? color.new(c_long, 25) : color.new(c_neutral, 25))
+
+    table.cell(dash, 0, 14, "Dist VWAP", text_color=color.white, bgcolor=color.new(color.black, 15))
+    table.cell(dash, 1, 14, str.tostring(dist_vwap_atr, "#.##") + " ATR", text_color=color.white, bgcolor=dist_ok ? color.new(c_long, 25) : color.new(c_short, 25))
+
+// ═══════════════════════════════════════════
+// FLECHAS LIMPIAS
+// ═══════════════════════════════════════════
+plotshape(show_long_arrow and show_tiny,
+     title="LONG Tiny",
+     style=shape.triangleup,
+     location=location.belowbar,
+     color=c_long,
+     size=size.tiny)
+
+plotshape(show_long_arrow and show_small,
+     title="LONG Small",
+     style=shape.triangleup,
+     location=location.belowbar,
+     color=c_long,
+     size=size.small)
+
+plotshape(show_long_arrow and show_normal,
+     title="LONG Normal",
+     style=shape.triangleup,
+     location=location.belowbar,
+     color=c_long,
+     size=size.normal)
+
+plotshape(show_short_arrow and show_tiny,
+     title="SHORT Tiny",
+     style=shape.triangledown,
+     location=location.abovebar,
+     color=c_short,
+     size=size.tiny)
+
+plotshape(show_short_arrow and show_small,
+     title="SHORT Small",
+     style=shape.triangledown,
+     location=location.abovebar,
+     color=c_short,
+     size=size.small)
+
+plotshape(show_short_arrow and show_normal,
+     title="SHORT Normal",
+     style=shape.triangledown,
+     location=location.abovebar,
+     color=c_short,
+     size=size.normal)

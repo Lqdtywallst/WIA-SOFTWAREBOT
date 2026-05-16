@@ -1,0 +1,5 @@
+
+grp_webhook = "Webhook / IG Bot (JSON)"
+use_webhook_json = input.bool(true, "Enviar alertas como JSON", group=grp_webhook)
+webhook_epic = input.string("IX.D.DOW.DAILY.IP", "Epic IG (para API / bot)", tooltip="Código EPIC exacto en IG Markets para este mercado.", group=grp_webhook)
+webhook_secret = input.string("", "WEBHOOK_SECRET (igual que Railway)", tooltip="Opcional si Railway tiene WEBHOOK_SECRET configurado.", group=grp_webhook)

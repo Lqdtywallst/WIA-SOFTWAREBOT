@@ -1,0 +1,8 @@
+
+if use_alerts and long_sig
+    longMsg = use_webhook_json ? webhook_json_payload(true) : ("VWAP PRO LONG | " + alert_symbol_name + " | Precio: " + str.tostring(close, "#.##") + " | Bias: " + bias_txt + " | Estado: " + institutional_state + " | LONG Score: " + str.tostring(long_score) + "/10 | ADX: " + str.tostring(adx, "#.##") + " | RSI: " + str.tostring(rsi, "#.##") + " | Vol: " + str.tostring(vol_ratio, "#.##") + "x | DistVWAP: " + str.tostring(dist_vwap_atr, "#.##") + " ATR")
+    alert(longMsg, alert.freq_once_per_bar_close)
+
+if use_alerts and short_sig
+    shortMsg = use_webhook_json ? webhook_json_payload(false) : ("VWAP PRO SHORT | " + alert_symbol_name + " | Precio: " + str.tostring(close, "#.##") + " | Bias: " + bias_txt + " | Estado: " + institutional_state + " | SHORT Score: " + str.tostring(short_score) + "/10 | ADX: " + str.tostring(adx, "#.##") + " | RSI: " + str.tostring(rsi, "#.##") + " | Vol: " + str.tostring(vol_ratio, "#.##") + "x | DistVWAP: " + str.tostring(dist_vwap_atr, "#.##") + " ATR")
+    alert(shortMsg, alert.freq_once_per_bar_close)

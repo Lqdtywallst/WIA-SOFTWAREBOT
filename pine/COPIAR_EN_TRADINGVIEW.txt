@@ -1,0 +1,26 @@
+CÓDIGO COMPLETO PARA TRADINGVIEW (webhook JSON)
+
+No puedo pegarte aquí ~600 líneas sin riesgo de corte. Lo correcto es generar el archivo en tu Mac en 2 minutos:
+
+1) Abre TradingView → Pine Editor con TU indicador actual.
+
+2) Selecciona TODO el código (Cmd+A) → Copiar.
+
+3) Abre TextEdit → Formato → Convertir a texto sin formato → Pega → Guardar como:
+   ~/Desktop/mi_vwap_pro.pine
+   (codificación UTF-8)
+
+4) Abre Terminal y ejecuta EXACTAMENTE:
+
+   python3 ~/tradingview-ig-bot/pine/merge_for_tradingview.py ~/Desktop/mi_vwap_pro.pine > ~/Desktop/mi_vwap_pro_WEBHOOK.pine
+
+5) Abre ~/Desktop/mi_vwap_pro_WEBHOOK.pine en TextEdit → Cmd+A → Copiar → TradingView Pine Editor → pegar (reemplaza todo).
+
+6) En los inputs nuevos:
+   - Epic IG: el código EPIC real de IG para ese mercado.
+   - WEBHOOK_SECRET: el mismo que tienes en Railway (si lo usas).
+
+7) Crea la alerta con webhook:
+   https://wia-softwarebot-production.up.railway.app/webhook
+
+Si el comando del paso 4 da ERROR rojo, cópialo y pégalo en el chat.
