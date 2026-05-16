@@ -84,6 +84,7 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "trading_mode": settings.trading_mode,
+        "execution_mode": settings.execution_mode,
         "ig_account_type": settings.ig_account_type,
         "live_trading_enabled": settings.live_trading_enabled,
         "dashboard_url": "/dashboard",
@@ -172,7 +173,7 @@ async def webhook(request: Request) -> dict[str, Any]:
         decision_logger.log_decision(decision_record)
         return {"accepted": False, "reason": risk_reason, "risk": risk_manager.snapshot()}
 
-    if settings.trading_mode == "paper":
+    if settings.execution_mode == "paper":
         order_result = await paper_broker.place_market_order(order, alert)
     else:
         try:

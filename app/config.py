@@ -92,6 +92,19 @@ class Settings(BaseSettings):
     def live_trading_enabled(self) -> bool:
         return self.trading_mode == "live" and self.ig_account_type == "live"
 
+    @property
+    def execution_mode(self) -> Literal["paper", "demo", "live"]:
+        """What the bot actually uses: paper when IG credentials are missing or placeholders."""
+        if self.trading_mode == "paper":
+            return "paper"
+        placeholders = {"", "your-api-key", "paper-only", "your-identifier", "your-password"}
+        key = self.ig_api_key.get_secret_value().strip()
+        ident = self.ig_identifier.strip()
+        pwd = self.ig_password.get_secret_value().strip()
+        if key in placeholders or ident in placeholders or pwd in placeholders:
+            return "paper"
+        return self.trading_mode
+
 
 @lru_cache
 def get_settings() -> Settings:
